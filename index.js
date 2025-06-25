@@ -2,11 +2,15 @@ const { Telegraf } = require("telegraf");
 const fs = require("fs");
 const path = require("path");
 const express = require("express");
+const fetch = require("node-fetch");
+
 const app = express();
 
 app.get("/", (req, res) => res.send("Бот работает"));
 const PORT = process.env.PORT || 3000;
-app.listen(PORT);
+app.listen(PORT, () => {
+  console.log(`Express сервер запущен на порту ${PORT}`);
+});
 
 // Замените на свой Telegram ID владельца
 const OWNER_ID = Number(process.env.OWNER_ID);
@@ -44,31 +48,26 @@ let admins = loadJSON(adminsFile);
 let blacklist = loadJSON(blacklistFile);
 let blacklistedAdmins = loadJSON(blacklistedAdminsFile);
 
-// Помощь: проверить, является ли пользователь владельцем
+// Проверка прав
 function isOwner(id) {
   return id === OWNER_ID;
 }
 
-// Проверить, админ ли (и не в чёрном списке)
 function isAdmin(id) {
   return admins.includes(id) && !blacklistedAdmins.includes(id);
 }
 
-// Проверить, забанен ли пользователь
 function isBlacklisted(id) {
   return blacklist.includes(id);
 }
 
-// Получить userId из упоминания или id (например, "@username" или "123456789")
 async function resolveUserId(ctx, input) {
   if (!input) return null;
   input = input.trim();
   if (/^\d+$/.test(input)) {
-    // Это id
     return Number(input);
   }
   if (input.startsWith("@")) {
-    // username
     try {
       const user = await ctx.telegram.getChat(input);
       return user.id;
@@ -79,20 +78,19 @@ async function resolveUserId(ctx, input) {
   return null;
 }
 
-// Защита команд — только админы могут выполнять, кроме владельца
 function adminOnly(ctx, next) {
   const id = ctx.from.id;
   if (isOwner(id) || isAdmin(id)) return next();
   ctx.reply("🚫 У вас нет прав для выполнения этой команды.");
 }
 
-// Защита для владельца
 function ownerOnly(ctx, next) {
   if (isOwner(ctx.from.id)) return next();
   ctx.reply("🚫 Только владелец может это делать.");
 }
 
-// Команда /start
+// Команды
+
 bot.start((ctx) => {
   ctx.reply(
     `Привет, ${ctx.from.first_name}!\n` +
@@ -101,7 +99,6 @@ bot.start((ctx) => {
   );
 });
 
-// Команда /help
 bot.command("help", (ctx) => {
   const helpText = `
 Список команд:
@@ -128,7 +125,6 @@ bot.command("help", (ctx) => {
   ctx.reply(helpText);
 });
 
-// Команда /admins — список админов
 bot.command("admins", ownerOnly, async (ctx) => {
   if (admins.length === 0) return ctx.reply("Админов пока нет.");
   let text = "Список админов:\n";
@@ -143,7 +139,6 @@ bot.command("admins", ownerOnly, async (ctx) => {
   ctx.reply(text);
 });
 
-// /addadmin <user>
 bot.command("addadmin", ownerOnly, async (ctx) => {
   const args = ctx.message.text.split(" ").slice(1);
   if (args.length === 0) return ctx.reply("Использование: /addadmin @username или ID");
@@ -157,7 +152,6 @@ bot.command("addadmin", ownerOnly, async (ctx) => {
   ctx.reply(`✅ Пользователь с ID ${userId} добавлен в админы.`);
 });
 
-// /removeadmin <user>
 bot.command("removeadmin", ownerOnly, async (ctx) => {
   const args = ctx.message.text.split(" ").slice(1);
   if (args.length === 0) return ctx.reply("Использование: /removeadmin @username или ID");
@@ -171,7 +165,6 @@ bot.command("removeadmin", ownerOnly, async (ctx) => {
   ctx.reply(`✅ Пользователь с ID ${userId} удалён из админов.`);
 });
 
-// /kick <user>
 bot.command("kick", adminOnly, async (ctx) => {
   const args = ctx.message.text.split(" ").slice(1);
   if (args.length === 0) return ctx.reply("Использование: /kick @username или ID");
@@ -186,7 +179,6 @@ bot.command("kick", adminOnly, async (ctx) => {
   }
 });
 
-// /ban <user>
 bot.command("ban", adminOnly, async (ctx) => {
   const args = ctx.message.text.split(" ").slice(1);
   if (args.length === 0) return ctx.reply("Использование: /ban @username или ID");
@@ -206,7 +198,6 @@ bot.command("ban", adminOnly, async (ctx) => {
   ctx.reply(`✅ Пользователь ${args[0]} забанен (черный список).`);
 });
 
-// /unblacklist <user>
 bot.command("unblacklist", adminOnly, async (ctx) => {
   const args = ctx.message.text.split(" ").slice(1);
   if (args.length === 0) return ctx.reply("Использование: /unblacklist @username или ID");
@@ -222,7 +213,6 @@ bot.command("unblacklist", adminOnly, async (ctx) => {
   ctx.reply(`✅ Пользователь ${args[0]} удалён из чёрного списка.`);
 });
 
-// /blacklist_admin <user>
 bot.command("blacklist_admin", ownerOnly, async (ctx) => {
   const args = ctx.message.text.split(" ").slice(1);
   if (args.length === 0) return ctx.reply("Использование: /blacklist_admin @username или ID");
@@ -238,15 +228,12 @@ bot.command("blacklist_admin", ownerOnly, async (ctx) => {
   ctx.reply(`✅ Админ с ID ${userId} заблокирован (не может использовать команды).`);
 });
 
-// /unblacklist_admin <user>
 bot.command("unblacklist_admin", ownerOnly, async (ctx) => {
   const args = ctx.message.text.split(" ").slice(1);
   if (args.length === 0) return ctx.reply("Использование: /unblacklist_admin @username или ID");
 
   const userId = await resolveUserId(ctx, args[0]);
-  if (!userId) return ctx.reply("Не удалось найти пользователя.");
-
-  if (!blacklistedAdmins.includes(userId)) return ctx.reply("Админ не в чёрном списке.");
+  if (!userId) return ctx.reply("Админ не в чёрном списке.");
 
   blacklistedAdmins = blacklistedAdmins.filter((id) => id !== userId);
   saveJSON(blacklistedAdminsFile, blacklistedAdmins);
@@ -254,7 +241,6 @@ bot.command("unblacklist_admin", ownerOnly, async (ctx) => {
   ctx.reply(`✅ Админ с ID ${userId} разблокирован.`);
 });
 
-// /mute <user> <duration>
 bot.command("mute", adminOnly, async (ctx) => {
   const args = ctx.message.text.split(" ").slice(1);
   if (args.length < 2) return ctx.reply("Использование: /mute @username 10m");
@@ -285,7 +271,6 @@ bot.command("mute", adminOnly, async (ctx) => {
   }
 });
 
-// /ban_temp <user> <duration>
 bot.command("ban_temp", adminOnly, async (ctx) => {
   const args = ctx.message.text.split(" ").slice(1);
   if (args.length < 2) return ctx.reply("Использование: /ban_temp @username 1h");
@@ -306,7 +291,6 @@ bot.command("ban_temp", adminOnly, async (ctx) => {
   }
 });
 
-// Парсер времени
 function parseDuration(str) {
   const match = str.match(/^(\d+)([mhd])$/);
   if (!match) return null;
@@ -324,8 +308,6 @@ function parseDuration(str) {
   }
 }
 
-// /wiki <запрос>
-const fetch = require("node-fetch");
 bot.command("wiki", async (ctx) => {
   const query = ctx.message.text.split(" ").slice(1).join(" ");
   if (!query) return ctx.reply("Введите запрос для Википедии.");
@@ -335,22 +317,29 @@ bot.command("wiki", async (ctx) => {
     const res = await fetch(url);
     if (!res.ok) return ctx.reply("Не удалось получить данные с Википедии.");
     const data = await res.json();
-    if (data.extract) {
-      ctx.replyWithMarkdownV2(
-        `*${data.title}*\n\n${data.extract.replace(/([_*[\]()~`>#+-=|{}.!])/g, "\\$1")}\n\n[Читать дальше](${data.content_urls.desktop.page})`
-      );
-    } else {
-      ctx.reply("По вашему запросу ничего не найдено.");
+    let text = `*${data.title}*\n${data.extract}`;
+    if (data.content_urls?.desktop?.page) {
+      text += `\n[Читать далее](${data.content_urls.desktop.page})`;
     }
+    ctx.replyWithMarkdown(text);
   } catch {
     ctx.reply("Ошибка при запросе к Википедии.");
   }
 });
 
-// Запуск бота
-bot.launch();
-console.log("Бот запущен!");
+// Обработчик всех сообщений - проверка ЧС
+bot.use((ctx, next) => {
+  if (isBlacklisted(ctx.from.id)) {
+    return ctx.reply("Вы в чёрном списке и не можете использовать бота.");
+  }
+  if (isAdmin(ctx.from.id) === false && admins.includes(ctx.from.id)) {
+    // Если админ заблокирован - не дать доступ
+    return ctx.reply("Вы заблокированы как админ и не можете использовать команды.");
+  }
+  return next();
+});
 
-// graceful stop
+bot.launch().then(() => console.log("Бот запущен"));
+
 process.once("SIGINT", () => bot.stop("SIGINT"));
 process.once("SIGTERM", () => bot.stop("SIGTERM"));
