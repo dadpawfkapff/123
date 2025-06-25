@@ -243,8 +243,9 @@ bot.command("unblacklist_admin", ownerOnly, async (ctx) => {
 
 bot.command("mute", adminOnly, async (ctx) => {
   const args = ctx.message.text.split(" ").slice(1);
-  if (args.length < 2) return ctx.reply("Использование: /mute @username 10m");
+  if (args.length < 2) return ctx.reply("Использование: /mute @username|id 10m");
 
+  // Получаем ID пользователя — работает с @username и с ID
   const userId = await resolveUserId(ctx, args[0]);
   if (!userId) return ctx.reply("Не удалось найти пользователя.");
 
@@ -266,7 +267,8 @@ bot.command("mute", adminOnly, async (ctx) => {
       until_date: Math.floor(Date.now() / 1000) + duration,
     });
     ctx.reply(`✅ Пользователь ${args[0]} замучен на ${args[1]}`);
-  } catch {
+  } catch (err) {
+    console.error(err);
     ctx.reply("Ошибка при попытке замутить пользователя.");
   }
 });
